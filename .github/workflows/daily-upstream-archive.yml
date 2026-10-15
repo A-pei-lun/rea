@@ -1,0 +1,90 @@
+name: Daily upstream archive
+
+# Archive upstream revisions on GitHub, keeping this fork up to date.
+on:
+  schedule:
+    # 04:37 Beijing/Singapore time (UTC+8); avoid the top of the hour.
+    - cron: "37 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-upstream-archive
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out fork with history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Snapshot upstream and sync main
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REPOSITORY" != "A-pei-lun/rea" ]]; then
+            echo "::error::Unexpected repository; refusing to sync."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/morluto/rea.git
+
+          # Never overwrite the backup if upstream is unavailable.
+          if ! git fetch --no-tags upstream '+refs/heads/main:refs/remotes/upstream/main'; then
+            echo "::error::Upstream is inaccessible. Existing backups remain untouched."
+            exit 1
+          fi
+
+          upstream_sha="$(git rev-parse refs/remotes/upstream/main)"
+          previous_sha="$(git ls-remote --heads origin refs/heads/upstream-backup | awk '{print $1}')"
+
+          # A permanent tag for every newly observed upstream revision.
+          # Tags preserve prior history even after upstream force-pushes.
+          if [[ "$upstream_sha" != "$previous_sha" ]]; then
+            snapshot_tag="backup/$(date -u +%Y-%m-%d)-${upstream_sha:0:12}"
+            if ! git ls-remote --exit-code --tags origin "refs/tags/$snapshot_tag" >/dev/null 2>&1; then
+              git tag "$snapshot_tag" "$upstream_sha"
+              git push origin "refs/tags/$snapshot_tag"
+            fi
+
+            # Only the snapshot branch may be force-updated.
+            git push --force-with-lease="refs/heads/upstream-backup:$previous_sha" origin "$upstream_sha:refs/heads/upstream-backup"
+          fi
+
+          # Keep both upstream updates and this fork's custom workflow.
+          git checkout main
+          if ! git merge --no-edit refs/remotes/upstream/main -m "chore: merge latest upstream [skip ci]"; then
+            git merge --abort || true
+            echo "::error::Upstream was archived, but main has a merge conflict."
+            exit 1
+          fi
+
+          # Monthly activity prevents auto-disable after 60 days of inactivity.
+          current_month="$(date -u +%Y-%m)"
+          status_file=".github/upstream-archive-status.txt"
+          if [[ ! -f "$status_file" ]] || [[ "$(head -n 1 "$status_file")" != "$current_month" ]]; then
+            printf '%s\nUpstream: morluto/rea\nLast observed SHA: %s\n' "$current_month" "$upstream_sha" > "$status_file"
+            git add "$status_file"
+            git commit -m "chore: monthly backup heartbeat ($current_month) [skip ci]"
+          fi
+
+          git push origin HEAD:main
+
+          {
+            echo "### Upstream archive"
+            echo "- Source: morluto/rea"
+            echo "- Current upstream commit: $upstream_sha"
+            echo "- Snapshot branch: upstream-backup"
+            echo "- Immutable version tags: backup/YYYY-MM-DD-SHA"
+            echo "- Default branch: main (merged, not overwritten)"
+          } >> "$GITHUB_STEP_SUMMARY"
