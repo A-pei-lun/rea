@@ -1,0 +1,3 @@
+2026-10
+Upstream: morluto/rea
+Last observed SHA: cd64e24ff21a3a3351254dc20cee4b6256041780
