@@ -1,7 +1,7 @@
 {
   "name": "rea-agents",
   "mcpName": "io.github.morluto/rea",
-  "version": "6.5.0",
+  "version": "6.6.0",
   "description": "Reverse engineer anything from your terminal or agent with one CLI and MCP server.",
   "license": "MIT",
   "repository": {
@@ -213,7 +213,6 @@
     "verify:javascript-runtime": "npm run build:cached && node scripts/verify/javascript/runtime-observation.mjs",
     "verify:javascript:digests": "npm run build:cached && node scripts/verify/javascript/digests.mjs",
     "verify:javascript:output": "npm run build:cached && node scripts/verify/javascript/output.mjs",
-    "verify:javascript:module-references": "npm run build:cached && node scripts/verify/javascript/module-references.mjs",
     "verify:application-workflows": "npm run build:cached && node scripts/verify/javascript/application-workflows.mjs",
     "verify:managed": "npm run build:cached && node scripts/verify/managed/conformance.mjs",
     "verify:firmware": "npm run build:cached && node scripts/verify/firmware/analysis.mjs",
