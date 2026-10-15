@@ -6,9 +6,13 @@ on:
     # 04:37 Beijing/Singapore time (UTC+8); avoid the top of the hour.
     - cron: "37 20 * * *"
   workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/daily-upstream-archive.yml"
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: daily-upstream-archive
@@ -19,6 +23,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Disable inherited GitHub Actions workflows
+        shell: bash
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != "A-pei-lun/rea" ]]; then
+            echo "::error::Refusing to disable workflows in an unexpected repository."
+            exit 1
+          fi
+
+          # This disables workflows without modifying upstream files.
+          workflow_ids="$(gh api --paginate \
+            "repos/$GITHUB_REPOSITORY/actions/workflows?per_page=100" \
+            --jq '.workflows[] | select(.state == "active" and .path != ".github/workflows/daily-upstream-archive.yml") | .id')"
+
+          disabled=0
+          if [[ -n "$workflow_ids" ]]; then
+            while IFS= read -r workflow_id; do
+              [[ -z "$workflow_id" ]] && continue
+              gh api --method PUT "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow_id/disable" >/dev/null
+              echo "Disabled inherited workflow ID $workflow_id"
+              disabled=$((disabled + 1))
+            done <<< "$workflow_ids"
+          fi
+
+          echo "Disabled $disabled inherited workflows; keeping Daily upstream archive active." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check out fork with history
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
